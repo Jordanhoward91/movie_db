@@ -36,7 +36,7 @@ class AppUsers(db.Model):
 
 class AppUsersSchema(ma.Schema):
   class Meta:
-    fields = ['user_id', 'first_name', 'last_name', 'email', 'phone', 'city', 'created_date', 'role', 'active', 'org_id']
+    fields = ['user_id', 'first_name', 'last_name', 'email', 'phone', 'city', 'created_date', 'role', 'active', 'org_id', 'organization']
 
   organizations = ma.fields.Nested(OrganizationsSchema(only=("name", "active")))
 

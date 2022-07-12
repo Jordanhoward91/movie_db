@@ -4,6 +4,9 @@ from flask_marshmallow import Marshmallow
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import marshmallow as mar
+# from models.actors import Actors, actor_schema, actors_schema
+# from models.directors import Directors, director_schema, directors_schema
+# from models.movies import Movies, movie_schema, movies_schema
 
 app = Flask(__name__)
 
@@ -26,8 +29,8 @@ class Movies(db.Model):
     director_first_name = db.Column(db.String(), nullable=False)
     director_last_name = db.Column(db.String(), nullable=False)
     active = db.Column(db.Boolean(), nullable = False, default = True)
-    actors = db.relationship('Actors', cascade="all,delete", backref="actors", lazy=True)
-    director = db.relationship('Directors', cascade='all,delete', backref='director', lazy=True)
+    actors = db.relationship('Actors', backref="actors", lazy=True)
+    director = db.relationship('Directors', backref='director', lazy=True)
 
     def __init__(self, movie_name, actor_id, actor_first_name, actor_last_name, director_id, director_first_name, director_last_name):
         self.movie_name = movie_name
@@ -77,8 +80,8 @@ directors_schema = DirectorsSchema(many=True)
 class MoviesSchema(ma.Schema):
     class Meta:
         fields = ['movie_id', 'movie_name', 'actors', 'director', 'active']
-    actors = mar.fields.Nested(ActorsSchema(only=('actor_id', 'actor_first_name', 'actor_last_name')))
-    director = mar.fields.Nested(DirectorsSchema(only=( 'director_id', 'director_first_name', 'director_last_name')))
+    actors = mar.fields.Nested(ActorsSchema(only=('actor_first_name', 'actor_last_name')))
+    director = mar.fields.Nested(DirectorsSchema(only=('director_first_name', 'director_last_name')))
 
 movie_schema = MoviesSchema()
 movies_schema = MoviesSchema(many=True)
@@ -86,39 +89,6 @@ movies_schema = MoviesSchema(many=True)
 def create_all():
     db.create_all()
 
-    print("Querying for Movie...")
-    movie_data = db.session.query(Movies).filter(Movies.movie_name == "Top Gun").first()
-    if movie_data == None:
-        print("Movie not found. Creating Top Gun...")
-        actor_data = db.session.query(Actors).filter(Actors.actor_first_name == "Tom").first()
-        director_data = db.session.query(Directors).filter(Directors.director_first_name == "Tony").first()
-        if actor_data == None:
-            print("Adding Tom Cruise...")
-            actor_first_name = "Tom"
-            actor_last_name = "Cruise"
-            new_actor = Actors(actor_first_name, actor_last_name)
-
-            db.session.add(new_actor)
-            db.session.commit()
-            
-        if director_data == None:
-            print("Adding Tony Scott...")
-            director_first_name = "Tony"
-            director_last_name = "Scott"
-            new_director = Directors(director_first_name, director_last_name)
-
-            db.session.add(new_director)
-            db.session.commit()
-            
-            print("Adding Top Gun...")
-            new_movie = Movies("Top Gun", new_actor.actor_id, actor_first_name, actor_last_name, new_director.director_id, director_first_name, director_last_name)
-            db.session.add(new_movie)
-            db.session.commit()
-            print("Movie Added! Starting Application...")
-
-    else:
-        print("Top Gun found! Starting Application!")
-        
 @app.route('/actors/add', methods=['POST'])
 def add_actor():
     form = request.form
@@ -160,7 +130,7 @@ def edit_actor(actor_id):
         if actor_first_name:
             actor_data.actor_first_name = actor_first_name
         if actor_last_name:
-            actor_data.actor_first_name = actor_first_name
+            actor_data.actor_last_name = actor_last_name
         
         db.session.commit()
 
@@ -191,17 +161,18 @@ def activate_actor(actor_id):
     return jsonify(f'Actor with actor_id {actor_id} activated'), 200
 
 @app.route('/actor/search/<search_term>')
-def actors_get_by_search(search_term):
+def actors_get_by_search(search_term, internal_call=False):
     search_term = search_term.lower()
 
     actor_data = {}
 
     actor_data = db.session.query(Actors).filter(db.or_( \
         db.func.lower(Actors.actor_first_name).contains(search_term), \
-        db.fun.lower(Actors.actor_last_name).contains(search_term)))
+        db.func.lower(Actors.actor_last_name).contains(search_term)))
 
+    if internal_call:
+        return actors_schema.dump(actor_data)
     return jsonify(actors_schema.dump(actor_data))
-
 
 
 @app.route('/directors/add', methods=['POST'])
@@ -274,6 +245,19 @@ def activate_director(director_id):
     director_data.active = True
     db.session.commit()
     return jsonify(f'Director with director_id {director_id} activiated'), 200
+
+@app.route('/director/search/<search_term>')
+def directors_get_by_search(search_term, internal_call=False):
+    search_term = search_term.lower()
+
+    director_data = {}
+
+    director_data = db.session.query(Directors).filter(db.or_( \
+        db.func.lower(Directors.director_first_name).contains(search_term), \
+        db.func.lower(Directors.director_last_name).contains(search_term)))
+    if internal_call:
+        return directors_schema.dump(director_data)
+    return jsonify(directors_schema.dump(director_data))
 
 @app.route('/movies/add', methods=['POST'])
 def movie_add():
@@ -348,6 +332,30 @@ def activate_movie(movie_id):
     movie_data.active = True
     db.session.commit()
     return jsonify(f'Movie with movie_id {movie_id} activated'), 200
+
+@app.route('/movie/search/<search_term>')
+def movies_get_by_search(search_term, internal_call=False):
+    search_term = search_term.lower()
+
+    movie_data = {}
+
+    movie_data = db.session.query(Movies).filter(db.or_( \
+        db.func.lower(Movies.movie_name).contains(search_term)))
+
+    if internal_call:
+        return movies_schema.dump(movie_data)
+    return jsonify(movies_schema.dump(movie_data))
+
+@app.route('/search/<search_term>')
+def get_all_by_search(search_term):
+    search_term = search_term.lower()
+    
+    search_results = {}
+    search_results["actors"] = actors_get_by_search(search_term, True)
+    search_results["directors"] = directors_get_by_search(search_term, True)
+    search_results["movies"] = movies_get_by_search(search_term, True)
+
+    return jsonify(search_results)
 
 if __name__ == "__main__":
     create_all()
