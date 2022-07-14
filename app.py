@@ -208,6 +208,7 @@ def actors_get_by_search(search_term, internal_call=False):
     return jsonify(actors_schema.dump(actor_data))
 
 
+
 @app.route('/directors/add', methods=['POST'])
 def add_director():
     form = request.form
